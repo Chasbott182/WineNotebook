@@ -1,0 +1,8 @@
+{
+  "name": "WineNotebook",
+  "description": "A wine tasting and cellar notebook application for cataloging, rating, and tracking wines with tasting notes, varietals, and pairings.",
+  "permissions": [],
+  "capabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
