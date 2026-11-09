@@ -33,6 +33,27 @@ let cellarLocations: string[] = [
   "Dining Room Credenza"
 ];
 
+let appSettings = {
+  theme: 'dark' as 'dark' | 'light',
+  profile: {
+    fullName: 'Charles Bott',
+    email: 'chasman182@gmail.com',
+    title: 'Certified Sommelier & Collector',
+    location: 'Napa Valley, CA',
+    favoriteVarietal: 'Cabernet Sauvignon',
+    bio: 'Curating structured reds and mineral-driven whites across temperature-controlled cellar zones.'
+  },
+  security: {
+    twoFactorEnabled: true,
+    sessionTimeoutMinutes: 30,
+    requirePinForDelete: false,
+    securityPin: '1820',
+    biometricLogin: true,
+    apiCorsRestricted: true,
+    auditLogEnabled: true
+  }
+};
+
 let wines: Wine[] = [
   {
     id: 1,
@@ -118,9 +139,33 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
-// API Routes matching Spring Boot WineResource endpoints
+// API Routes matching Spring Boot WineResource & SettingsController endpoints
 app.get('/wine/all', (req, res) => {
   res.status(200).json(wines);
+});
+
+app.get('/wine/settings', (_req, res) => {
+  res.status(200).json({
+    ...appSettings,
+    cellarLocations
+  });
+});
+
+app.put('/wine/settings', (req, res) => {
+  const { theme, profile, security } = req.body;
+  if (theme === 'light' || theme === 'dark') {
+    appSettings.theme = theme;
+  }
+  if (profile) {
+    appSettings.profile = { ...appSettings.profile, ...profile };
+  }
+  if (security) {
+    appSettings.security = { ...appSettings.security, ...security };
+  }
+  res.status(200).json({
+    ...appSettings,
+    cellarLocations
+  });
 });
 
 app.get('/wine/cellar-locations', (_req, res) => {
@@ -134,12 +179,30 @@ app.post('/wine/cellar-locations', (req, res) => {
   if (!location) {
     return res.status(400).json({ error: 'Cellar location name is required' });
   }
-  if (!cellarLocations.includes(location)) {
+  if (!cellarLocations.some(l => l.toLowerCase() === location.toLowerCase())) {
     cellarLocations.push(location);
   }
   const fromWines = wines.map(w => w.cellarLocation).filter(Boolean);
   const merged = Array.from(new Set([...cellarLocations, ...fromWines]));
   res.status(201).json(merged);
+});
+
+app.delete('/wine/cellar-locations/:location', (req, res) => {
+  const target = decodeURIComponent(req.params.location || '').trim();
+  if (cellarLocations.length <= 1) {
+    return res.status(400).json({ error: 'At least one cellar location must remain' });
+  }
+  cellarLocations = cellarLocations.filter(l => l.toLowerCase() !== target.toLowerCase());
+  const fallback = cellarLocations[0] || 'Main Cellar - Rack A1';
+  wines = wines.map(w =>
+    (w.cellarLocation || '').toLowerCase() === target.toLowerCase()
+      ? { ...w, cellarLocation: fallback }
+      : w
+  );
+  res.status(200).json({
+    cellarLocations,
+    wines
+  });
 });
 
 app.get('/wine/find/:id', (req, res) => {

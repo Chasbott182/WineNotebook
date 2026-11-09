@@ -1,13 +1,21 @@
 import React, { useState, useEffect } from 'react';
-import { Wine, WineFormData } from './types';
+import {
+  Wine,
+  WineFormData,
+  ThemeMode,
+  PersonalProfile,
+  SecuritySettings,
+} from './types';
 import {
   DEFAULT_CELLAR_LOCATIONS,
   filterWines,
   getUniqueVarietals,
   getUniqueCellarLocations,
   addCellarLocationToList,
+  removeCellarLocationFromList,
   calculateCellarStats,
 } from './utils/wineUtils';
+import SettingsPage from './components/SettingsPage';
 import { 
   Wine as WineIcon, 
   Plus, 
@@ -29,7 +37,12 @@ import {
   BookOpen,
   Cpu,
   Warehouse,
-  Check
+  Check,
+  Settings,
+  Sun,
+  Moon,
+  User,
+  KeyRound
 } from 'lucide-react';
 
 const INITIAL_FORM: WineFormData = {
@@ -51,6 +64,25 @@ const INITIAL_FORM: WineFormData = {
   cellarLocation: 'Main Cellar - Rack A1',
 };
 
+const DEFAULT_PROFILE: PersonalProfile = {
+  fullName: 'Charles Bott',
+  email: 'chasman182@gmail.com',
+  title: 'Certified Sommelier & Collector',
+  location: 'Napa Valley, CA',
+  favoriteVarietal: 'Cabernet Sauvignon',
+  bio: 'Curating structured reds and mineral-driven whites across temperature-controlled cellar zones.',
+};
+
+const DEFAULT_SECURITY: SecuritySettings = {
+  twoFactorEnabled: true,
+  sessionTimeoutMinutes: 30,
+  requirePinForDelete: false,
+  securityPin: '1820',
+  biometricLogin: true,
+  apiCorsRestricted: true,
+  auditLogEnabled: true,
+};
+
 export default function App() {
   const [wines, setWines] = useState<Wine[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +90,11 @@ export default function App() {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedVarietal, setSelectedVarietal] = useState<string>('All');
   const [selectedCellar, setSelectedCellar] = useState<string>('All');
+
+  // App Settings State
+  const [theme, setTheme] = useState<ThemeMode>('dark');
+  const [profile, setProfile] = useState<PersonalProfile>(DEFAULT_PROFILE);
+  const [security, setSecurity] = useState<SecuritySettings>(DEFAULT_SECURITY);
 
   // Custom cellar locations state
   const [cellarLocations, setCellarLocations] = useState<string[]>(DEFAULT_CELLAR_LOCATIONS);
@@ -74,16 +111,31 @@ export default function App() {
   const [editingWine, setEditingWine] = useState<Wine | null>(null);
   const [formData, setFormData] = useState<WineFormData>(INITIAL_FORM);
   const [activeWineDetails, setActiveWineDetails] = useState<Wine | null>(null);
-  const [activeTab, setActiveTab] = useState<'cellar' | 'architecture' | 'api'>('cellar');
+  const [activeTab, setActiveTab] = useState<'cellar' | 'architecture' | 'api' | 'settings'>('cellar');
 
-  // Fetch wines and saved cellar locations
+  // PIN verification modal state when requirePinForDelete is enabled
+  const [pendingDeleteWineId, setPendingDeleteWineId] = useState<number | null>(null);
+  const [pinEntry, setPinEntry] = useState('');
+  const [pinError, setPinError] = useState<string | null>(null);
+
+  // Apply theme class to body
+  useEffect(() => {
+    if (theme === 'light') {
+      document.body.classList.add('theme-light');
+    } else {
+      document.body.classList.remove('theme-light');
+    }
+  }, [theme]);
+
+  // Fetch wines, cellar locations, and settings
   const fetchWines = async () => {
     setLoading(true);
     setError(null);
     try {
-      const [winesRes, locRes] = await Promise.all([
+      const [winesRes, locRes, settingsRes] = await Promise.all([
         fetch(`${apiBaseUrl}/all`),
         fetch(`${apiBaseUrl}/cellar-locations`).catch(() => null),
+        fetch(`${apiBaseUrl}/settings`).catch(() => null),
       ]);
       if (!winesRes.ok) throw new Error(`HTTP error! status: ${winesRes.status}`);
       const data = await winesRes.json();
@@ -93,6 +145,19 @@ export default function App() {
         const locs = await locRes.json();
         if (Array.isArray(locs) && locs.length > 0) {
           setCellarLocations(locs);
+        }
+      }
+
+      if (settingsRes && settingsRes.ok) {
+        const sData = await settingsRes.json();
+        if (sData.theme === 'light' || sData.theme === 'dark') {
+          setTheme(sData.theme);
+        }
+        if (sData.profile) {
+          setProfile(sData.profile);
+        }
+        if (sData.security) {
+          setSecurity(sData.security);
         }
       }
     } catch (err: any) {
@@ -105,6 +170,45 @@ export default function App() {
   useEffect(() => {
     fetchWines();
   }, [apiBaseUrl]);
+
+  const handleThemeChange = async (newTheme: ThemeMode) => {
+    setTheme(newTheme);
+    try {
+      await fetch(`${apiBaseUrl}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ theme: newTheme }),
+      });
+    } catch {
+      // Fallback to local state
+    }
+  };
+
+  const handleSaveProfile = async (newProfile: PersonalProfile) => {
+    setProfile(newProfile);
+    try {
+      await fetch(`${apiBaseUrl}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ profile: newProfile }),
+      });
+    } catch {
+      // Fallback to local state
+    }
+  };
+
+  const handleSaveSecurity = async (newSecurity: SecuritySettings) => {
+    setSecurity(newSecurity);
+    try {
+      await fetch(`${apiBaseUrl}/settings`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ security: newSecurity }),
+      });
+    } catch {
+      // Fallback to local state
+    }
+  };
 
   const handleCreateCellarLocation = async (locationName: string) => {
     const trimmed = locationName.trim();
@@ -127,6 +231,36 @@ export default function App() {
       // Fallback to local state if external backend doesn't expose /cellar-locations
     }
     return trimmed;
+  };
+
+  const handleRemoveCellarLocation = async (locationName: string) => {
+    const { locations, updatedWines } = removeCellarLocationFromList(
+      cellarLocations,
+      locationName,
+      wines
+    );
+    setCellarLocations(locations);
+    setWines(updatedWines);
+    if (selectedCellar.toLowerCase() === locationName.trim().toLowerCase()) {
+      setSelectedCellar('All');
+    }
+    try {
+      const res = await fetch(
+        `${apiBaseUrl}/cellar-locations/${encodeURIComponent(locationName)}`,
+        { method: 'DELETE' }
+      );
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          setCellarLocations(data);
+        } else if (data && Array.isArray(data.cellarLocations)) {
+          setCellarLocations(data.cellarLocations);
+          if (Array.isArray(data.wines)) setWines(data.wines);
+        }
+      }
+    } catch {
+      // Fallback to local state
+    }
   };
 
   const handleAddCellarBarSubmit = async (e: React.FormEvent) => {
@@ -165,7 +299,7 @@ export default function App() {
     setIsFormOpen(true);
   };
 
-  const handleDelete = async (id: number) => {
+  const executeDeleteWine = async (id: number) => {
     try {
       const res = await fetch(`${apiBaseUrl}/delete/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete wine');
@@ -174,6 +308,30 @@ export default function App() {
     } catch (err: any) {
       setError(`Error deleting wine: ${err.message}`);
     }
+  };
+
+  const handleDelete = async (id: number) => {
+    if (security.requirePinForDelete) {
+      setPendingDeleteWineId(id);
+      setPinEntry('');
+      setPinError(null);
+      return;
+    }
+    await executeDeleteWine(id);
+  };
+
+  const handleConfirmPinDelete = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pendingDeleteWineId === null) return;
+    if (pinEntry.trim() !== security.securityPin.trim()) {
+      setPinError('Incorrect Security PIN. Deletion blocked.');
+      return;
+    }
+    const targetId = pendingDeleteWineId;
+    setPendingDeleteWineId(null);
+    setPinEntry('');
+    setPinError(null);
+    await executeDeleteWine(targetId);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -227,7 +385,13 @@ export default function App() {
   const { totalValue, avgAbv, varietalCount } = calculateCellarStats(filteredWines);
 
   return (
-    <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col selection:bg-rose-900 selection:text-white">
+    <div
+      className={`min-h-screen flex flex-col selection:bg-rose-900 selection:text-white ${
+        theme === 'light'
+          ? 'theme-light bg-stone-100 text-stone-900'
+          : 'bg-stone-950 text-stone-100'
+      }`}
+    >
       {/* Top Header */}
       <header className="sticky top-0 z-30 bg-stone-900/90 backdrop-blur-md border-b border-stone-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-3.5 flex flex-wrap items-center justify-between gap-4">
@@ -237,7 +401,7 @@ export default function App() {
             </div>
             <div>
               <div className="flex items-center gap-2">
-                <h1 className="text-xl font-bold tracking-tight bg-gradient-to-r from-stone-100 via-rose-100 to-rose-300 bg-clip-text text-transparent">
+                <h1 className="text-xl font-bold tracking-tight text-stone-100">
                   WineNotebook
                 </h1>
                 <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-amber-950/80 text-amber-300 border border-amber-800/60 flex items-center gap-1">
@@ -245,11 +409,16 @@ export default function App() {
                   Java 21 • Spring Boot 3
                 </span>
               </div>
-              <p className="text-xs text-stone-400">Clean Architecture • SOLID Principles • Sommelier Tasting Notes</p>
+              <p className="text-xs text-stone-400 flex items-center gap-1.5">
+                <User className="w-3 h-3 text-rose-400" />
+                <span>{profile.fullName}</span>
+                <span>•</span>
+                <span>{profile.title}</span>
+              </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             <nav className="flex bg-stone-950 p-1 rounded-xl border border-stone-800">
               <button
                 onClick={() => setActiveTab('cellar')}
@@ -278,7 +447,25 @@ export default function App() {
                 <Code2 className="w-3.5 h-3.5" />
                 Endpoints
               </button>
+              <button
+                onClick={() => setActiveTab('settings')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${
+                  activeTab === 'settings' ? 'bg-rose-900/60 text-white shadow' : 'text-stone-400 hover:text-stone-200'
+                }`}
+              >
+                <Settings className="w-3.5 h-3.5" />
+                Settings
+              </button>
             </nav>
+
+            <button
+              onClick={() => handleThemeChange(theme === 'dark' ? 'light' : 'dark')}
+              className="p-2 rounded-xl text-stone-400 hover:text-stone-200 hover:bg-stone-800 border border-stone-800 transition-colors"
+              title={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Theme`}
+              aria-label={`Switch to ${theme === 'dark' ? 'Light' : 'Dark'} Theme`}
+            >
+              {theme === 'dark' ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-stone-700" />}
+            </button>
 
             <button
               onClick={fetchWines}
@@ -527,7 +714,7 @@ export default function App() {
                           (e.target as HTMLImageElement).src = 'https://images.unsplash.com/photo-1510812431401-41d2bd2722f3?w=800&auto=format&fit=crop&q=80';
                         }}
                       />
-                      <div className="absolute inset-0 bg-gradient-to-t from-stone-900 via-stone-900/30 to-transparent"></div>
+                      <div className="absolute inset-0 bg-gradient-to-t from-stone-950 via-stone-950/40 to-transparent"></div>
                       
                       <div className="absolute top-3 left-3 flex flex-wrap gap-1.5 max-w-[75%]">
                         <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-900/80 text-rose-200 backdrop-blur-md border border-rose-700/40">
@@ -559,7 +746,7 @@ export default function App() {
                         </button>
                       </div>
 
-                      <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between">
+                      <div className="wine-card-overlay absolute bottom-3 left-3 right-3 flex items-end justify-between">
                         <div>
                           <p className="text-xs text-rose-300 font-medium tracking-wide uppercase">{wine.brand}</p>
                           <h3 className="text-lg font-bold text-white leading-tight truncate">{wine.name}</h3>
@@ -661,7 +848,7 @@ export default function App() {
                   <span className="text-amber-400 text-xs font-bold uppercase tracking-wider block">1. Boilerplate Elimination</span>
                   <p className="text-sm text-stone-200 font-semibold mt-1">Java 21 Records for DTOs</p>
                   <p className="text-xs text-stone-400 mt-1 leading-relaxed">
-                    Instead of 200+ lines of handwritten getters, setters, constructors, <code className="text-rose-300">equals()</code>, and <code className="text-rose-300">hashCode()</code>, <code className="text-rose-300">WineRequest</code> and <code className="text-rose-300">WineResponse</code> are concise immutable records with Jakarta bean validation.
+                    Instead of 200+ lines of handwritten getters, setters, constructors, <code className="text-rose-300">equals()</code>, and <code className="text-rose-300">hashCode()</code>, <code className="text-rose-300">WineRequest</code>, <code className="text-rose-300">WineResponse</code>, and <code className="text-rose-300">AppSettingsDto</code> are concise immutable records.
                   </p>
                 </div>
 
@@ -683,7 +870,7 @@ export default function App() {
                 </div>
                 <h4 className="font-bold text-stone-200 text-sm">Single Responsibility</h4>
                 <p className="text-xs text-stone-400 mt-1.5 leading-relaxed">
-                  Each class has one sole reason to change: <code className="text-rose-300">WineController</code> (HTTP), <code className="text-rose-300">WineServiceImpl</code> (business logic), <code className="text-rose-300">WineMapper</code> (transformations), and <code className="text-rose-300">WineRepository</code> (persistence).
+                  Each class has one sole reason to change: <code className="text-rose-300">WineController</code> (HTTP), <code className="text-rose-300">SettingsController</code> (preferences), <code className="text-rose-300">WineServiceImpl</code> (business logic), and <code className="text-rose-300">WineMapper</code> (transformations).
                 </p>
               </div>
 
@@ -726,47 +913,6 @@ export default function App() {
                   Controllers depend on the <code className="text-emerald-300">WineService</code> abstraction, not the concrete implementation, injected cleanly via constructor injection without reflection hacks.
                 </p>
               </div>
-            </div>
-
-            {/* Code Directory Map */}
-            <div className="bg-stone-900/70 border border-stone-800 rounded-2xl p-5">
-              <h3 className="text-sm font-bold text-stone-200 mb-3 flex items-center gap-2">
-                <Layers className="w-4 h-4 text-rose-400" />
-                Backend Codebase Directory Structure (`backend/`)
-              </h3>
-              <pre className="bg-stone-950 p-4 rounded-xl text-xs font-mono text-stone-300 overflow-x-auto leading-relaxed border border-stone-800">
-{`backend/
-├── pom.xml                                      # Java 21, Spring Boot 3.3.5, Spring Data JPA, H2, MySQL
-├── Dockerfile                                   # Multi-stage container build (Temurin 21)
-├── README.md                                    # Documentation, SOLID specs & run guides
-└── src/
-    ├── main/
-    │   ├── java/com/chasbott/winenotebook/
-    │   │   ├── WineNotebookApplication.java     # Spring Boot main entry point
-    │   │   ├── model/
-    │   │   │   └── Wine.java                    # Clean JPA Entity (Jakarta EE) with cellarLocation
-    │   │   ├── dto/
-    │   │   │   ├── WineRequest.java             # Java 21 Record (Zero-boilerplate input DTO)
-    │   │   │   └── WineResponse.java            # Java 21 Record (Zero-boilerplate output DTO)
-    │   │   ├── mapper/
-    │   │   │   └── WineMapper.java              # Entity <-> Record transformation (SRP)
-    │   │   ├── repository/
-    │   │   │   └── WineRepository.java          # Spring Data JPA Repository
-    │   │   ├── service/
-    │   │   │   ├── WineService.java             # Interface (DIP / ISP)
-    │   │   │   └── impl/WineServiceImpl.java    # Implementation with Transactions & Validations
-    │   │   ├── controller/
-    │   │   │   └── WineController.java          # REST Controller (/wine/all, /add, /cellar/{loc})
-    │   │   ├── exception/
-    │   │   │   ├── WineNotFoundException.java   # Domain Exception
-    │   │   │   └── GlobalExceptionHandler.java  # Centralized REST Error Handler
-    │   │   └── config/
-    │   │       └── DataInitializer.java         # Seed tasting notes & cellar locations for dev
-    │   └── resources/
-    │       └── application.yml                  # Configured with 'dev' (H2) and 'prod' (MySQL)
-    └── test/java/com/chasbott/winenotebook/
-        └── service/WineServiceTest.java         # Mockito unit tests validating business logic`}
-              </pre>
             </div>
           </div>
         )}
@@ -827,13 +973,13 @@ export default function App() {
                 </div>
                 <div className="bg-stone-950 p-3 rounded-lg border border-stone-800">
                   <span className="px-2 py-0.5 rounded bg-amber-900/60 text-amber-300 font-bold mr-2">PUT</span>
-                  <code>/wine/update</code>
-                  <p className="text-stone-400 mt-1 font-sans">Updates existing wine metadata, location & notes</p>
+                  <code>/wine/settings</code>
+                  <p className="text-stone-400 mt-1 font-sans">Updates user profile, security policies & theme</p>
                 </div>
                 <div className="bg-stone-950 p-3 rounded-lg border border-stone-800">
                   <span className="px-2 py-0.5 rounded bg-rose-900/60 text-rose-300 font-bold mr-2">DELETE</span>
-                  <code>/wine/delete/{`{id}`}</code>
-                  <p className="text-stone-400 mt-1 font-sans">Deletes the wine by id (HTTP 200 OK)</p>
+                  <code>/wine/cellar-locations/{`{loc}`}</code>
+                  <p className="text-stone-400 mt-1 font-sans">Removes a cellar location and reassigns bottles</p>
                 </div>
                 <div className="bg-stone-950 p-3 rounded-lg border border-stone-800">
                   <span className="px-2 py-0.5 rounded bg-blue-900/60 text-blue-300 font-bold mr-2">GET</span>
@@ -844,7 +990,77 @@ export default function App() {
             </div>
           </div>
         )}
+
+        {/* Tab 4: Settings Page */}
+        {activeTab === 'settings' && (
+          <SettingsPage
+            theme={theme}
+            onThemeChange={handleThemeChange}
+            profile={profile}
+            onSaveProfile={handleSaveProfile}
+            security={security}
+            onSaveSecurity={handleSaveSecurity}
+            cellarLocations={cellarLocations}
+            wines={wines}
+            onAddCellarLocation={handleCreateCellarLocation}
+            onRemoveCellarLocation={handleRemoveCellarLocation}
+          />
+        )}
       </main>
+
+      {/* PIN Confirmation Modal when requirePinForDelete is enabled */}
+      {pendingDeleteWineId !== null && (
+        <div className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-stone-900 border border-stone-800 rounded-3xl max-w-sm w-full p-6 space-y-4 shadow-2xl">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <KeyRound className="w-5 h-5 text-amber-400" />
+                <h3 className="text-base font-bold text-stone-100">Security PIN Required</h3>
+              </div>
+              <button
+                onClick={() => setPendingDeleteWineId(null)}
+                aria-label="Cancel PIN verification"
+                className="text-stone-400 hover:text-stone-200"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-stone-400">
+              Enter your cellar security PIN to authorize deleting this bottle from inventory.
+            </p>
+            <form onSubmit={handleConfirmPinDelete} className="space-y-3">
+              <input
+                type="password"
+                value={pinEntry}
+                onChange={e => {
+                  setPinEntry(e.target.value);
+                  setPinError(null);
+                }}
+                placeholder="Enter Security PIN..."
+                aria-label="Enter Security PIN"
+                autoFocus
+                className="w-full bg-stone-950 border border-stone-800 rounded-xl px-3.5 py-2 text-sm text-stone-100 focus:outline-none focus:border-rose-600"
+              />
+              {pinError && <p className="text-xs text-red-400">{pinError}</p>}
+              <div className="flex justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={() => setPendingDeleteWineId(null)}
+                  className="px-3.5 py-1.5 rounded-xl bg-stone-800 text-stone-300 text-xs font-medium"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-1.5 rounded-xl bg-rose-700 hover:bg-rose-600 text-white text-xs font-semibold"
+                >
+                  Confirm Delete
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* Sommelier Tasting Notes Details Modal */}
       {activeWineDetails && (
@@ -856,7 +1072,7 @@ export default function App() {
                 alt={activeWineDetails.name}
                 className="w-full h-full object-cover opacity-75"
               />
-              <div className="absolute inset-0 bg-gradient-to-t from-stone-900 via-stone-900/40 to-transparent"></div>
+              <div className="absolute inset-0 bg-gradient-to-t from-stone-950 via-stone-950/40 to-transparent"></div>
               
               <button
                 onClick={() => setActiveWineDetails(null)}
@@ -866,7 +1082,7 @@ export default function App() {
                 <X className="w-5 h-5" />
               </button>
 
-              <div className="absolute bottom-4 left-6 right-6">
+              <div className="wine-card-overlay absolute bottom-4 left-6 right-6">
                 <div className="flex items-center gap-2">
                   <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-900 text-rose-200 border border-rose-700">
                     {activeWineDetails.varietal}
@@ -1218,7 +1434,9 @@ export default function App() {
 
       {/* Footer */}
       <footer className="border-t border-stone-900 bg-stone-950/80 py-6 text-center text-xs text-stone-500">
-        <p>WineNotebook • Java 21 & Spring Boot 3.3 Backend • SOLID Architecture</p>
+        <p>
+          WineNotebook • Curated by {profile.fullName} ({profile.location}) • Java 21 & Spring Boot 3.3 Backend
+        </p>
       </footer>
     </div>
   );

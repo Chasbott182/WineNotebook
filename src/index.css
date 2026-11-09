@@ -5,5 +5,136 @@
     background-color: #0c0a09;
     color: #f5f5f4;
     font-family: system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+
+  body.theme-light {
+    background-color: #faf8f5;
+    color: #1c1917;
   }
 }
+
+/* Light theme surface & typography overrides */
+.theme-light {
+  background-color: #faf8f5 !important;
+  color: #1c1917 !important;
+}
+
+.theme-light header,
+.theme-light footer {
+  background-color: rgba(255, 253, 250, 0.92) !important;
+  border-color: #e7e2da !important;
+}
+
+.theme-light .bg-stone-950,
+.theme-light .bg-stone-950\/60,
+.theme-light .bg-stone-950\/70,
+.theme-light .bg-stone-950\/80 {
+  background-color: #f3efe9 !important;
+}
+
+.theme-light .bg-stone-900,
+.theme-light .bg-stone-900\/80,
+.theme-light .bg-stone-900\/70,
+.theme-light .bg-stone-900\/60,
+.theme-light .bg-stone-900\/50,
+.theme-light .bg-stone-900\/30 {
+  background-color: #ffffff !important;
+  box-shadow: 0 2px 10px rgba(28, 25, 23, 0.05);
+}
+
+.theme-light .bg-stone-800,
+.theme-light .bg-stone-800\/80,
+.theme-light .bg-stone-800\/60 {
+  background-color: #ebe5dc !important;
+}
+
+.theme-light .border-stone-800,
+.theme-light .border-stone-800\/80,
+.theme-light .border-stone-800\/60,
+.theme-light .border-stone-700,
+.theme-light .border-stone-700\/60,
+.theme-light .border-stone-900 {
+  border-color: #e2dcd3 !important;
+}
+
+.theme-light .text-stone-100,
+.theme-light .text-stone-200,
+.theme-light .text-white {
+  color: #1c1917 !important;
+}
+
+/* Keep white text on primary colored buttons and badges */
+.theme-light .bg-rose-700,
+.theme-light .bg-rose-800,
+.theme-light .bg-rose-900,
+.theme-light .bg-rose-900\/60,
+.theme-light .bg-rose-900\/80,
+.theme-light .bg-amber-700 {
+  color: #ffffff !important;
+}
+
+.theme-light .bg-rose-700 *,
+.theme-light .bg-rose-800 *,
+.theme-light .bg-rose-900 *,
+.theme-light .bg-rose-900\/60 *,
+.theme-light .bg-amber-700 * {
+  color: #ffffff !important;
+}
+
+/* Preserve white text on wine card image overlays */
+.theme-light .wine-card-overlay,
+.theme-light .wine-card-overlay h2,
+.theme-light .wine-card-overlay h3 {
+  color: #ffffff !important;
+}
+
+.theme-light .text-stone-300 {
+  color: #44403c !important;
+}
+
+.theme-light .text-stone-400,
+.theme-light .text-stone-500 {
+  color: #68625d !important;
+}
+
+.theme-light .text-rose-300,
+.theme-light .text-rose-400 {
+  color: #9f1239 !important;
+}
+
+.theme-light .text-amber-300,
+.theme-light .text-amber-400 {
+  color: #b45309 !important;
+}
+
+.theme-light .text-emerald-400 {
+  color: #047857 !important;
+}
+
+.theme-light .bg-amber-950\/70,
+.theme-light .bg-amber-950\/80,
+.theme-light .bg-amber-950\/90 {
+  background-color: #fef3c7 !important;
+  border-color: #f59e0b !important;
+  color: #92400e !important;
+}
+
+.theme-light .bg-amber-950\/70 *,
+.theme-light .bg-amber-950\/80 *,
+.theme-light .bg-amber-950\/90 * {
+  color: #92400e !important;
+}
+
+.theme-light .bg-emerald-950,
+.theme-light .bg-emerald-950\/70 {
+  background-color: #d1fae5 !important;
+  border-color: #10b981 !important;
+  color: #065f46 !important;
+}
+
+.theme-light .bg-emerald-950 *,
+.theme-light .bg-emerald-950\/70 * {
+  color: #065f46 !important;
+}
+

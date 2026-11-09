@@ -1,4 +1,4 @@
-import { Wine } from '../types';
+import { Wine, SecuritySettings } from '../types';
 
 export const DEFAULT_CELLAR_LOCATIONS = [
   'Main Cellar - Rack A1',
@@ -57,6 +57,42 @@ export function addCellarLocationToList(
   );
   if (exists) return existingLocations;
   return [...existingLocations, cleaned];
+}
+
+export function removeCellarLocationFromList(
+  existingLocations: string[],
+  locationToRemove: string,
+  wines: Wine[] = []
+): { locations: string[]; updatedWines: Wine[] } {
+  const cleanedTarget = locationToRemove.trim().toLowerCase();
+  if (!cleanedTarget || existingLocations.length <= 1) {
+    return { locations: existingLocations, updatedWines: wines };
+  }
+  const locations = existingLocations.filter(
+    loc => loc.trim().toLowerCase() !== cleanedTarget
+  );
+  const fallback = locations[0] || DEFAULT_CELLAR_LOCATIONS[0];
+  const updatedWines = wines.map(wine =>
+    (wine.cellarLocation || '').trim().toLowerCase() === cleanedTarget
+      ? { ...wine, cellarLocation: fallback }
+      : wine
+  );
+  return { locations, updatedWines };
+}
+
+export function calculateSecurityScore(security: SecuritySettings): {
+  score: number;
+  level: 'High' | 'Moderate' | 'Low';
+} {
+  let score = 20;
+  if (security.twoFactorEnabled) score += 25;
+  if (security.requirePinForDelete && security.securityPin.trim().length >= 4) score += 20;
+  if (security.biometricLogin) score += 15;
+  if (security.apiCorsRestricted) score += 10;
+  if (security.auditLogEnabled) score += 10;
+
+  const level = score >= 80 ? 'High' : score >= 50 ? 'Moderate' : 'Low';
+  return { score, level };
 }
 
 export function calculateCellarStats(wines: Wine[]) {
