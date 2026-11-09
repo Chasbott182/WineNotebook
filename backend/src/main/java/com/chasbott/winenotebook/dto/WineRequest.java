@@ -28,5 +28,6 @@ public record WineRequest(
     String acidity,
     @PositiveOrZero(message = "Price must be non-negative")
     double price,
-    String priceRange
+    String priceRange,
+    String cellarLocation
 ) {}

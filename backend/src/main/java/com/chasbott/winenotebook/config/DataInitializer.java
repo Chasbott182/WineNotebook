@@ -33,7 +33,8 @@ public class DataInitializer {
                     "Firm & Polished",
                     "Medium+",
                     95.0,
-                    "$$$$"
+                    "$$$$",
+                    "Main Cellar - Rack A1"
                 );
 
                 Wine wine2 = new Wine(
@@ -52,7 +53,8 @@ public class DataInitializer {
                     "Silky",
                     "Vibrant",
                     65.0,
-                    "$$$"
+                    "$$$",
+                    "Wine Fridge (55°F)"
                 );
 
                 Wine wine3 = new Wine(
@@ -71,7 +73,8 @@ public class DataInitializer {
                     "None",
                     "High & Electric",
                     48.0,
-                    "$$"
+                    "$$",
+                    "Wine Fridge (55°F)"
                 );
 
                 Wine wine4 = new Wine(
@@ -90,7 +93,8 @@ public class DataInitializer {
                     "High & Grippy",
                     "High",
                     80.0,
-                    "$$$$"
+                    "$$$$",
+                    "Aging Vault"
                 );
 
                 wineRepository.saveAll(List.of(wine1, wine2, wine3, wine4));

@@ -92,4 +92,13 @@ public class WineServiceImpl implements WineService {
                 .map(wineMapper::toResponse)
                 .toList();
     }
+
+    @Override
+    @Transactional(readOnly = true)
+    public List<WineResponse> findByCellarLocation(String cellarLocation) {
+        return wineRepository.findByCellarLocation(cellarLocation)
+                .stream()
+                .map(wineMapper::toResponse)
+                .toList();
+    }
 }

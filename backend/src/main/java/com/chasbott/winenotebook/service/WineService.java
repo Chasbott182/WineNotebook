@@ -24,4 +24,6 @@ public interface WineService {
     List<WineResponse> findByBrand(String brand);
 
     List<WineResponse> findByVarietal(String varietal);
+
+    List<WineResponse> findByCellarLocation(String cellarLocation);
 }

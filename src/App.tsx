@@ -1,5 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { Wine, WineFormData } from './types';
+import {
+  DEFAULT_CELLAR_LOCATIONS,
+  filterWines,
+  getUniqueVarietals,
+  getUniqueCellarLocations,
+  addCellarLocationToList,
+  calculateCellarStats,
+} from './utils/wineUtils';
 import { 
   Wine as WineIcon, 
   Plus, 
@@ -19,8 +27,9 @@ import {
   RefreshCw,
   Server,
   BookOpen,
-  CheckCircle2,
-  Cpu
+  Cpu,
+  Warehouse,
+  Check
 } from 'lucide-react';
 
 const INITIAL_FORM: WineFormData = {
@@ -39,6 +48,7 @@ const INITIAL_FORM: WineFormData = {
   acidity: 'Balanced',
   price: 25.0,
   priceRange: '$$',
+  cellarLocation: 'Main Cellar - Rack A1',
 };
 
 export default function App() {
@@ -47,6 +57,14 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedVarietal, setSelectedVarietal] = useState<string>('All');
+  const [selectedCellar, setSelectedCellar] = useState<string>('All');
+
+  // Custom cellar locations state
+  const [cellarLocations, setCellarLocations] = useState<string[]>(DEFAULT_CELLAR_LOCATIONS);
+  const [isAddCellarOpen, setIsAddCellarOpen] = useState(false);
+  const [newCellarName, setNewCellarName] = useState('');
+  const [inlineNewCellar, setInlineNewCellar] = useState('');
+  const [showInlineNewCellar, setShowInlineNewCellar] = useState(false);
   
   // Backend connection URL (defaults to /wine, can switch to local Spring Boot 8080)
   const [apiBaseUrl, setApiBaseUrl] = useState<string>('/wine');
@@ -58,15 +76,25 @@ export default function App() {
   const [activeWineDetails, setActiveWineDetails] = useState<Wine | null>(null);
   const [activeTab, setActiveTab] = useState<'cellar' | 'architecture' | 'api'>('cellar');
 
-  // Fetch wines from Spring Boot REST API
+  // Fetch wines and saved cellar locations
   const fetchWines = async () => {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch(`${apiBaseUrl}/all`);
-      if (!res.ok) throw new Error(`HTTP error! status: ${res.status}`);
-      const data = await res.json();
+      const [winesRes, locRes] = await Promise.all([
+        fetch(`${apiBaseUrl}/all`),
+        fetch(`${apiBaseUrl}/cellar-locations`).catch(() => null),
+      ]);
+      if (!winesRes.ok) throw new Error(`HTTP error! status: ${winesRes.status}`);
+      const data = await winesRes.json();
       setWines(data);
+
+      if (locRes && locRes.ok) {
+        const locs = await locRes.json();
+        if (Array.isArray(locs) && locs.length > 0) {
+          setCellarLocations(locs);
+        }
+      }
     } catch (err: any) {
       setError(err.message || 'Failed to load wines');
     } finally {
@@ -78,39 +106,96 @@ export default function App() {
     fetchWines();
   }, [apiBaseUrl]);
 
+  const handleCreateCellarLocation = async (locationName: string) => {
+    const trimmed = locationName.trim();
+    if (!trimmed) return null;
+    const updatedList = addCellarLocationToList(cellarLocations, trimmed);
+    setCellarLocations(updatedList);
+    try {
+      const res = await fetch(`${apiBaseUrl}/cellar-locations`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ location: trimmed }),
+      });
+      if (res.ok) {
+        const serverList = await res.json();
+        if (Array.isArray(serverList)) {
+          setCellarLocations(serverList);
+        }
+      }
+    } catch {
+      // Fallback to local state if external backend doesn't expose /cellar-locations
+    }
+    return trimmed;
+  };
+
+  const handleAddCellarBarSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const created = await handleCreateCellarLocation(newCellarName);
+    if (created) {
+      setSelectedCellar(created);
+      setNewCellarName('');
+      setIsAddCellarOpen(false);
+    }
+  };
+
   const handleOpenAdd = () => {
     setEditingWine(null);
-    setFormData(INITIAL_FORM);
+    const defaultLoc =
+      selectedCellar !== 'All'
+        ? selectedCellar
+        : cellarLocations[0] || 'Main Cellar - Rack A1';
+    setFormData({
+      ...INITIAL_FORM,
+      cellarLocation: defaultLoc,
+    });
+    setShowInlineNewCellar(false);
+    setInlineNewCellar('');
     setIsFormOpen(true);
   };
 
   const handleOpenEdit = (wine: Wine) => {
     setEditingWine(wine);
-    setFormData(wine);
+    setFormData({
+      ...wine,
+      cellarLocation: wine.cellarLocation || cellarLocations[0] || 'Main Cellar - Rack A1',
+    });
+    setShowInlineNewCellar(false);
+    setInlineNewCellar('');
     setIsFormOpen(true);
   };
 
   const handleDelete = async (id: number) => {
-    if (!window.confirm('Are you sure you want to delete this wine entry?')) return;
     try {
       const res = await fetch(`${apiBaseUrl}/delete/${id}`, { method: 'DELETE' });
       if (!res.ok) throw new Error('Failed to delete wine');
       setWines(prev => prev.filter(w => w.id !== id));
       if (activeWineDetails?.id === id) setActiveWineDetails(null);
     } catch (err: any) {
-      alert(`Error deleting wine: ${err.message}`);
+      setError(`Error deleting wine: ${err.message}`);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
+      let finalLocation = formData.cellarLocation;
+      if (showInlineNewCellar && inlineNewCellar.trim()) {
+        const created = await handleCreateCellarLocation(inlineNewCellar);
+        if (created) finalLocation = created;
+      }
+
+      const payload = {
+        ...formData,
+        cellarLocation: finalLocation || 'Main Cellar - Rack A1',
+      };
+
       if (editingWine) {
         // PUT /wine/update
         const res = await fetch(`${apiBaseUrl}/update`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ ...formData, id: editingWine.id }),
+          body: JSON.stringify({ ...payload, id: editingWine.id }),
         });
         if (!res.ok) throw new Error('Failed to update wine');
         const updated = await res.json();
@@ -121,32 +206,25 @@ export default function App() {
         const res = await fetch(`${apiBaseUrl}/add`, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(formData),
+          body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error('Failed to add wine');
         const created = await res.json();
         setWines(prev => [created, ...prev]);
       }
       setIsFormOpen(false);
+      setShowInlineNewCellar(false);
+      setInlineNewCellar('');
     } catch (err: any) {
-      alert(`Error saving wine: ${err.message}`);
+      setError(`Error saving wine: ${err.message}`);
     }
   };
 
-  const varietals = ['All', ...Array.from(new Set(wines.map(w => w.varietal).filter(Boolean)))];
-
-  const filteredWines = wines.filter(wine => {
-    const matchesSearch = 
-      wine.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      wine.brand.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      wine.place.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      wine.varietal.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesVarietal = selectedVarietal === 'All' || wine.varietal === selectedVarietal;
-    return matchesSearch && matchesVarietal;
-  });
-
-  const totalValue = wines.reduce((sum, w) => sum + (Number(w.price) || 0), 0);
-  const avgAbv = wines.length ? (wines.reduce((sum, w) => sum + (Number(w.alcohol) || 0), 0) / wines.length).toFixed(1) : '0.0';
+  const varietals = getUniqueVarietals(wines);
+  const allCellarFilterOptions = getUniqueCellarLocations(wines, cellarLocations);
+  const selectableCellarOptions = allCellarFilterOptions.filter(loc => loc !== 'All');
+  const filteredWines = filterWines(wines, searchTerm, selectedVarietal, selectedCellar);
+  const { totalValue, avgAbv, varietalCount } = calculateCellarStats(filteredWines);
 
   return (
     <div className="min-h-screen bg-stone-950 text-stone-100 flex flex-col selection:bg-rose-900 selection:text-white">
@@ -221,17 +299,104 @@ export default function App() {
       </header>
 
       {/* Main Content Area */}
-      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 space-y-8">
+      <main className="flex-1 max-w-7xl mx-auto w-full px-4 sm:px-6 lg:px-8 py-8 space-y-6">
 
         {/* Tab 1: Cellar Management */}
         {activeTab === 'cellar' && (
           <>
+            {/* Cellar Location Selector & Manager Bar */}
+            <section className="bg-stone-900/80 border border-stone-800 rounded-2xl p-4 flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div className="flex items-center gap-3 flex-wrap">
+                <div className="flex items-center gap-2 text-xs font-semibold uppercase tracking-wider text-amber-400 pr-2 border-r border-stone-800">
+                  <Warehouse className="w-4 h-4" />
+                  <span>Cellar Location</span>
+                </div>
+
+                <div className="flex items-center gap-2 flex-wrap">
+                  {allCellarFilterOptions.map(loc => {
+                    const countInLoc =
+                      loc === 'All'
+                        ? wines.length
+                        : wines.filter(
+                            w => (w.cellarLocation || 'Main Cellar - Rack A1') === loc
+                          ).length;
+                    return (
+                      <button
+                        key={loc}
+                        onClick={() => setSelectedCellar(loc)}
+                        className={`px-3 py-1.5 rounded-xl text-xs font-medium transition-all flex items-center gap-1.5 ${
+                          selectedCellar === loc
+                            ? 'bg-amber-700 text-white shadow-md shadow-amber-950/50 border border-amber-500/40'
+                            : 'bg-stone-950 text-stone-300 hover:text-white hover:bg-stone-800 border border-stone-800'
+                        }`}
+                      >
+                        <span>{loc === 'All' ? 'All Cellars' : loc}</span>
+                        <span
+                          className={`px-1.5 py-0.2 rounded-full text-[10px] ${
+                            selectedCellar === loc
+                              ? 'bg-amber-900/80 text-amber-100'
+                              : 'bg-stone-800 text-stone-400'
+                          }`}
+                        >
+                          {countInLoc}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0">
+                {isAddCellarOpen ? (
+                  <form onSubmit={handleAddCellarBarSubmit} className="flex items-center gap-2 w-full sm:w-auto">
+                    <input
+                      type="text"
+                      value={newCellarName}
+                      onChange={e => setNewCellarName(e.target.value)}
+                      placeholder="e.g. Basement Rack B2..."
+                      aria-label="New Cellar Location Name"
+                      autoFocus
+                      className="bg-stone-950 border border-amber-700/60 rounded-xl px-3 py-1.5 text-xs text-stone-100 placeholder:text-stone-500 focus:outline-none focus:border-amber-500"
+                    />
+                    <button
+                      type="submit"
+                      className="px-3 py-1.5 rounded-xl bg-amber-700 hover:bg-amber-600 text-white text-xs font-semibold flex items-center gap-1 transition-colors"
+                    >
+                      <Check className="w-3.5 h-3.5" />
+                      Save Location
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAddCellarOpen(false);
+                        setNewCellarName('');
+                      }}
+                      aria-label="Cancel adding cellar location"
+                      className="p-1.5 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-400 hover:text-stone-200"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </form>
+                ) : (
+                  <button
+                    onClick={() => setIsAddCellarOpen(true)}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-stone-800 hover:bg-stone-700 text-amber-300 border border-stone-700 transition-colors"
+                  >
+                    <Plus className="w-3.5 h-3.5" />
+                    Add Cellar Location
+                  </button>
+                )}
+              </div>
+            </section>
+
             {/* Quick Cellar Stats */}
             <section className="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div className="bg-stone-900/60 border border-stone-800/80 rounded-2xl p-4 flex items-center justify-between">
                 <div>
-                  <p className="text-xs uppercase tracking-wider text-stone-400 font-medium">Cellar Count</p>
-                  <p className="text-2xl font-bold text-stone-100 mt-1">{wines.length}</p>
+                  <p className="text-xs uppercase tracking-wider text-stone-400 font-medium">
+                    {selectedCellar === 'All' ? 'Total Bottles' : 'Bottles in Location'}
+                  </p>
+                  <p className="text-2xl font-bold text-stone-100 mt-1">{filteredWines.length}</p>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-stone-800/60 flex items-center justify-center text-rose-400">
                   <WineIcon className="w-5 h-5" />
@@ -261,7 +426,7 @@ export default function App() {
               <div className="bg-stone-900/60 border border-stone-800/80 rounded-2xl p-4 flex items-center justify-between">
                 <div>
                   <p className="text-xs uppercase tracking-wider text-stone-400 font-medium">Varietals</p>
-                  <p className="text-2xl font-bold text-stone-100 mt-1">{Math.max(0, varietals.length - 1)}</p>
+                  <p className="text-2xl font-bold text-stone-100 mt-1">{varietalCount}</p>
                 </div>
                 <div className="w-10 h-10 rounded-xl bg-stone-800/60 flex items-center justify-center text-purple-400">
                   <Layers className="w-5 h-5" />
@@ -275,7 +440,7 @@ export default function App() {
                 <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-stone-400" />
                 <input
                   type="text"
-                  placeholder="Search wine, brand, place, or varietal..."
+                  placeholder="Search wine, brand, place, cellar, or varietal..."
                   value={searchTerm}
                   onChange={e => setSearchTerm(e.target.value)}
                   className="w-full bg-stone-900 border border-stone-800 rounded-xl pl-10 pr-4 py-2 text-sm text-stone-100 placeholder:text-stone-500 focus:outline-none focus:border-rose-600 focus:ring-1 focus:ring-rose-600"
@@ -323,15 +488,27 @@ export default function App() {
                 <WineIcon className="w-12 h-12 mx-auto text-stone-600" />
                 <h3 className="text-lg font-semibold text-stone-200 mt-3">No wines found</h3>
                 <p className="text-stone-400 text-sm mt-1 max-w-sm mx-auto">
-                  No bottle matches your search criteria. Try a different search term or add a new wine to your cellar.
+                  {selectedCellar !== 'All'
+                    ? `No bottles stored in "${selectedCellar}" matching your criteria.`
+                    : 'No bottle matches your search criteria. Try a different search term or add a new wine to your cellar.'}
                 </p>
-                <button
-                  onClick={handleOpenAdd}
-                  className="mt-5 inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-700 hover:bg-rose-600 text-white font-medium text-sm transition-all"
-                >
-                  <Plus className="w-4 h-4" />
-                  Add Wine Entry
-                </button>
+                <div className="mt-5 flex items-center justify-center gap-3">
+                  {selectedCellar !== 'All' && (
+                    <button
+                      onClick={() => setSelectedCellar('All')}
+                      className="px-4 py-2 rounded-xl bg-stone-800 hover:bg-stone-700 text-stone-200 font-medium text-sm transition-all"
+                    >
+                      Show All Cellars
+                    </button>
+                  )}
+                  <button
+                    onClick={handleOpenAdd}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-rose-700 hover:bg-rose-600 text-white font-medium text-sm transition-all"
+                  >
+                    <Plus className="w-4 h-4" />
+                    Add Wine to {selectedCellar !== 'All' ? selectedCellar : 'Cellar'}
+                  </button>
+                </div>
               </div>
             ) : (
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -352,7 +529,7 @@ export default function App() {
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-stone-900 via-stone-900/30 to-transparent"></div>
                       
-                      <div className="absolute top-3 left-3 flex gap-2">
+                      <div className="absolute top-3 left-3 flex flex-wrap gap-1.5 max-w-[75%]">
                         <span className="px-2.5 py-1 rounded-full text-xs font-semibold bg-rose-900/80 text-rose-200 backdrop-blur-md border border-rose-700/40">
                           {wine.varietal}
                         </span>
@@ -367,14 +544,16 @@ export default function App() {
                         <button
                           onClick={() => handleOpenEdit(wine)}
                           className="p-1.5 rounded-lg bg-stone-900/80 hover:bg-rose-700 text-stone-300 hover:text-white backdrop-blur-md transition-colors"
-                          title="Edit Wine"
+                          title={`Edit ${wine.name}`}
+                          aria-label={`Edit ${wine.name}`}
                         >
                           <Edit3 className="w-3.5 h-3.5" />
                         </button>
                         <button
                           onClick={() => handleDelete(wine.id)}
                           className="p-1.5 rounded-lg bg-stone-900/80 hover:bg-red-700 text-stone-300 hover:text-white backdrop-blur-md transition-colors"
-                          title="Delete Wine"
+                          title={`Delete ${wine.name}`}
+                          aria-label={`Delete ${wine.name}`}
                         >
                           <Trash2 className="w-3.5 h-3.5" />
                         </button>
@@ -396,12 +575,25 @@ export default function App() {
                     {/* Card Body */}
                     <div className="p-4 flex-1 flex flex-col justify-between space-y-4">
                       <div className="space-y-2 text-xs">
-                        {wine.place && (
-                          <div className="flex items-center gap-1.5 text-stone-400">
-                            <MapPin className="w-3.5 h-3.5 text-stone-500 shrink-0" />
-                            <span className="truncate">{wine.place}</span>
-                          </div>
-                        )}
+                        <div className="flex items-center justify-between gap-2">
+                          {wine.place && (
+                            <div className="flex items-center gap-1.5 text-stone-400 truncate">
+                              <MapPin className="w-3.5 h-3.5 text-stone-500 shrink-0" />
+                              <span className="truncate">{wine.place}</span>
+                            </div>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setSelectedCellar(wine.cellarLocation || 'Main Cellar - Rack A1')
+                            }
+                            className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-amber-950/70 hover:bg-amber-900/80 text-amber-300 border border-amber-800/50 text-[11px] font-medium shrink-0 transition-colors"
+                            title="Filter by this cellar location"
+                          >
+                            <Warehouse className="w-3 h-3" />
+                            <span>{wine.cellarLocation || 'Main Cellar - Rack A1'}</span>
+                          </button>
+                        </div>
                         
                         <div className="grid grid-cols-3 gap-2 pt-1 border-t border-stone-800/60 text-[11px]">
                           <div>
@@ -552,7 +744,7 @@ export default function App() {
     │   ├── java/com/chasbott/winenotebook/
     │   │   ├── WineNotebookApplication.java     # Spring Boot main entry point
     │   │   ├── model/
-    │   │   │   └── Wine.java                    # Clean JPA Entity (Jakarta EE)
+    │   │   │   └── Wine.java                    # Clean JPA Entity (Jakarta EE) with cellarLocation
     │   │   ├── dto/
     │   │   │   ├── WineRequest.java             # Java 21 Record (Zero-boilerplate input DTO)
     │   │   │   └── WineResponse.java            # Java 21 Record (Zero-boilerplate output DTO)
@@ -564,39 +756,17 @@ export default function App() {
     │   │   │   ├── WineService.java             # Interface (DIP / ISP)
     │   │   │   └── impl/WineServiceImpl.java    # Implementation with Transactions & Validations
     │   │   ├── controller/
-    │   │   │   └── WineController.java          # REST Controller (/wine/all, /add, /update, etc.)
+    │   │   │   └── WineController.java          # REST Controller (/wine/all, /add, /cellar/{loc})
     │   │   ├── exception/
     │   │   │   ├── WineNotFoundException.java   # Domain Exception
     │   │   │   └── GlobalExceptionHandler.java  # Centralized REST Error Handler
     │   │   └── config/
-    │   │       └── DataInitializer.java         # Seed tasting notes for development
+    │   │       └── DataInitializer.java         # Seed tasting notes & cellar locations for dev
     │   └── resources/
     │       └── application.yml                  # Configured with 'dev' (H2) and 'prod' (MySQL)
     └── test/java/com/chasbott/winenotebook/
         └── service/WineServiceTest.java         # Mockito unit tests validating business logic`}
               </pre>
-            </div>
-
-            {/* Run Commands Guide */}
-            <div className="bg-stone-900/70 border border-stone-800 rounded-2xl p-5 space-y-3">
-              <h3 className="text-sm font-bold text-stone-200 flex items-center gap-2">
-                <Server className="w-4 h-4 text-emerald-400" />
-                How to Run the Spring Boot 3 Backend
-              </h3>
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs font-mono">
-                <div className="bg-stone-950 p-3.5 rounded-xl border border-stone-800">
-                  <p className="text-amber-400 font-sans font-semibold mb-1">Standard Maven Run</p>
-                  <code>cd backend</code><br />
-                  <code>mvn spring-boot:run</code>
-                  <p className="text-stone-400 font-sans mt-2 text-[11px]">Starts on port 8080 with in-memory H2 database.</p>
-                </div>
-                <div className="bg-stone-950 p-3.5 rounded-xl border border-stone-800">
-                  <p className="text-emerald-400 font-sans font-semibold mb-1">Docker Container</p>
-                  <code>cd backend</code><br />
-                  <code>docker build -t winenotebook .</code><br />
-                  <code>docker run -p 8080:8080 winenotebook</code>
-                </div>
-              </div>
             </div>
           </div>
         )}
@@ -647,18 +817,18 @@ export default function App() {
                 </div>
                 <div className="bg-stone-950 p-3 rounded-lg border border-stone-800">
                   <span className="px-2 py-0.5 rounded bg-blue-900/60 text-blue-300 font-bold mr-2">GET</span>
-                  <code>/wine/find/{`{id}`}</code>
-                  <p className="text-stone-400 mt-1 font-sans">Returns a single wine by its unique ID</p>
+                  <code>/wine/cellar/{`{location}`}</code>
+                  <p className="text-stone-400 mt-1 font-sans">Returns wines stored in a specific cellar location</p>
                 </div>
                 <div className="bg-stone-950 p-3 rounded-lg border border-stone-800">
                   <span className="px-2 py-0.5 rounded bg-emerald-900/60 text-emerald-300 font-bold mr-2">POST</span>
                   <code>/wine/add</code>
-                  <p className="text-stone-400 mt-1 font-sans">Saves a new Wine record (HTTP 201 Created)</p>
+                  <p className="text-stone-400 mt-1 font-sans">Saves a new Wine record with cellar location</p>
                 </div>
                 <div className="bg-stone-950 p-3 rounded-lg border border-stone-800">
                   <span className="px-2 py-0.5 rounded bg-amber-900/60 text-amber-300 font-bold mr-2">PUT</span>
                   <code>/wine/update</code>
-                  <p className="text-stone-400 mt-1 font-sans">Updates existing wine metadata and tasting notes</p>
+                  <p className="text-stone-400 mt-1 font-sans">Updates existing wine metadata, location & notes</p>
                 </div>
                 <div className="bg-stone-950 p-3 rounded-lg border border-stone-800">
                   <span className="px-2 py-0.5 rounded bg-rose-900/60 text-rose-300 font-bold mr-2">DELETE</span>
@@ -690,16 +860,23 @@ export default function App() {
               
               <button
                 onClick={() => setActiveWineDetails(null)}
+                aria-label="Close tasting notes"
                 className="absolute top-4 right-4 p-2 rounded-full bg-stone-900/80 hover:bg-stone-800 text-stone-300 hover:text-white"
               >
                 <X className="w-5 h-5" />
               </button>
 
               <div className="absolute bottom-4 left-6 right-6">
-                <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-900 text-rose-200 border border-rose-700">
-                  {activeWineDetails.varietal}
-                </span>
-                <h2 className="text-2xl font-bold text-white mt-1">{activeWineDetails.name}</h2>
+                <div className="flex items-center gap-2">
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-rose-900 text-rose-200 border border-rose-700">
+                    {activeWineDetails.varietal}
+                  </span>
+                  <span className="px-2.5 py-0.5 rounded-full text-xs font-medium bg-amber-950/90 text-amber-300 border border-amber-700/60 flex items-center gap-1">
+                    <Warehouse className="w-3 h-3" />
+                    {activeWineDetails.cellarLocation || 'Main Cellar - Rack A1'}
+                  </span>
+                </div>
+                <h2 className="text-2xl font-bold text-white mt-1.5">{activeWineDetails.name}</h2>
                 <p className="text-sm text-rose-300">{activeWineDetails.brand} • {activeWineDetails.place || 'Unknown Origin'}</p>
               </div>
             </div>
@@ -800,6 +977,7 @@ export default function App() {
               </div>
               <button
                 onClick={() => setIsFormOpen(false)}
+                aria-label="Close wine form"
                 className="text-stone-400 hover:text-stone-200"
               >
                 <X className="w-5 h-5" />
@@ -853,6 +1031,53 @@ export default function App() {
                     placeholder="e.g. Napa Valley, California"
                     className="w-full mt-1 bg-stone-950 border border-stone-800 rounded-xl px-3 py-2 text-sm text-stone-100 focus:outline-none focus:border-rose-600"
                   />
+                </div>
+
+                {/* Cellar Location Selection & Inline Creation */}
+                <div className="sm:col-span-2 bg-stone-950/70 border border-stone-800 rounded-2xl p-3.5">
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label
+                      htmlFor="cellarLocationSelect"
+                      className="text-xs font-semibold text-amber-300 flex items-center gap-1.5"
+                    >
+                      <Warehouse className="w-3.5 h-3.5" />
+                      Cellar Storage Location *
+                    </label>
+                    <button
+                      type="button"
+                      onClick={() => setShowInlineNewCellar(!showInlineNewCellar)}
+                      className="text-xs font-medium text-amber-400 hover:text-amber-300 flex items-center gap-1"
+                    >
+                      <Plus className="w-3 h-3" />
+                      {showInlineNewCellar ? 'Select Existing Location' : 'New Cellar Location'}
+                    </button>
+                  </div>
+
+                  {showInlineNewCellar ? (
+                    <input
+                      type="text"
+                      required
+                      value={inlineNewCellar}
+                      onChange={e => setInlineNewCellar(e.target.value)}
+                      placeholder="Enter new cellar location (e.g. Underground Vault - Bin 4)..."
+                      aria-label="Custom Cellar Location"
+                      className="w-full bg-stone-900 border border-amber-700/60 rounded-xl px-3 py-2 text-sm text-stone-100 focus:outline-none focus:border-amber-500"
+                    />
+                  ) : (
+                    <select
+                      id="cellarLocationSelect"
+                      aria-label="Cellar Storage Location"
+                      value={formData.cellarLocation}
+                      onChange={e => setFormData({ ...formData, cellarLocation: e.target.value })}
+                      className="w-full bg-stone-900 border border-stone-800 rounded-xl px-3 py-2 text-sm text-stone-100 focus:outline-none focus:border-rose-600"
+                    >
+                      {selectableCellarOptions.map(loc => (
+                        <option key={loc} value={loc}>
+                          {loc}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                 </div>
 
                 <div>

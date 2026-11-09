@@ -15,6 +15,7 @@ export interface Wine {
   acidity: string;
   price: number;
   priceRange: string;
+  cellarLocation: string;
 }
 
 export type WineFormData = Omit<Wine, 'id'> & { id?: number };

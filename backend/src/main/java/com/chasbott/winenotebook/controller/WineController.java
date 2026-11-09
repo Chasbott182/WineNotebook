@@ -65,4 +65,9 @@ public class WineController {
     public ResponseEntity<List<WineResponse>> getWinesByVarietal(@PathVariable("varietal") String varietal) {
         return ResponseEntity.ok(wineService.findByVarietal(varietal));
     }
+
+    @GetMapping("/cellar/{location}")
+    public ResponseEntity<List<WineResponse>> getWinesByCellarLocation(@PathVariable("location") String location) {
+        return ResponseEntity.ok(wineService.findByCellarLocation(location));
+    }
 }

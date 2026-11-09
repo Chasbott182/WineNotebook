@@ -19,4 +19,6 @@ public interface WineRepository extends JpaRepository<Wine, Long> {
     List<Wine> findByBrand(String brand);
 
     List<Wine> findByVarietal(String varietal);
+
+    List<Wine> findByCellarLocation(String cellarLocation);
 }

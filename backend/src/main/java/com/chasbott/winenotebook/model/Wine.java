@@ -41,6 +41,7 @@ public class Wine implements Serializable {
     private String acidity;
     private double price;
     private String priceRange;
+    private String cellarLocation;
 
     public Wine() {
     }
@@ -48,7 +49,7 @@ public class Wine implements Serializable {
     public Wine(Long id, String name, String varietal, String brand, String place,
                 double alcohol, String vintage, String drysweet, String imageUrl,
                 String palate, String nose, String body, String tannin,
-                String acidity, double price, String priceRange) {
+                String acidity, double price, String priceRange, String cellarLocation) {
         this.id = id;
         this.name = name;
         this.varietal = varietal;
@@ -65,6 +66,7 @@ public class Wine implements Serializable {
         this.acidity = acidity;
         this.price = price;
         this.priceRange = priceRange;
+        this.cellarLocation = cellarLocation;
     }
 
     // Getters and Setters
@@ -115,4 +117,7 @@ public class Wine implements Serializable {
 
     public String getPriceRange() { return priceRange; }
     public void setPriceRange(String priceRange) { this.priceRange = priceRange; }
+
+    public String getCellarLocation() { return cellarLocation; }
+    public void setCellarLocation(String cellarLocation) { this.cellarLocation = cellarLocation; }
 }

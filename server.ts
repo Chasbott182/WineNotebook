@@ -23,7 +23,15 @@ export interface Wine {
   acidity: string;
   price: number;
   priceRange: string;
+  cellarLocation: string;
 }
+
+let cellarLocations: string[] = [
+  "Main Cellar - Rack A1",
+  "Wine Fridge (55°F)",
+  "Aging Vault",
+  "Dining Room Credenza"
+];
 
 let wines: Wine[] = [
   {
@@ -42,7 +50,8 @@ let wines: Wine[] = [
     tannin: "Firm & Polished",
     acidity: "Medium+",
     price: 95.0,
-    priceRange: "$$$$"
+    priceRange: "$$$$",
+    cellarLocation: "Main Cellar - Rack A1"
   },
   {
     id: 2,
@@ -60,7 +69,8 @@ let wines: Wine[] = [
     tannin: "Silky",
     acidity: "Vibrant",
     price: 65.0,
-    priceRange: "$$$"
+    priceRange: "$$$",
+    cellarLocation: "Wine Fridge (55°F)"
   },
   {
     id: 3,
@@ -78,7 +88,8 @@ let wines: Wine[] = [
     tannin: "None",
     acidity: "High & Electric",
     price: 48.0,
-    priceRange: "$$"
+    priceRange: "$$",
+    cellarLocation: "Wine Fridge (55°F)"
   },
   {
     id: 4,
@@ -96,7 +107,8 @@ let wines: Wine[] = [
     tannin: "High & Grippy",
     acidity: "High",
     price: 80.0,
-    priceRange: "$$$$"
+    priceRange: "$$$$",
+    cellarLocation: "Aging Vault"
   }
 ];
 
@@ -111,6 +123,25 @@ app.get('/wine/all', (req, res) => {
   res.status(200).json(wines);
 });
 
+app.get('/wine/cellar-locations', (_req, res) => {
+  const fromWines = wines.map(w => w.cellarLocation).filter(Boolean);
+  const merged = Array.from(new Set([...cellarLocations, ...fromWines]));
+  res.status(200).json(merged);
+});
+
+app.post('/wine/cellar-locations', (req, res) => {
+  const location = (req.body.location || '').trim();
+  if (!location) {
+    return res.status(400).json({ error: 'Cellar location name is required' });
+  }
+  if (!cellarLocations.includes(location)) {
+    cellarLocations.push(location);
+  }
+  const fromWines = wines.map(w => w.cellarLocation).filter(Boolean);
+  const merged = Array.from(new Set([...cellarLocations, ...fromWines]));
+  res.status(201).json(merged);
+});
+
 app.get('/wine/find/:id', (req, res) => {
   const id = Number(req.params.id);
   const wine = wines.find(w => w.id === id);
@@ -121,11 +152,16 @@ app.get('/wine/find/:id', (req, res) => {
 });
 
 app.post('/wine/add', (req, res) => {
+  const location = (req.body.cellarLocation || '').trim() || 'Main Cellar - Rack A1';
+  if (!cellarLocations.includes(location)) {
+    cellarLocations.push(location);
+  }
   const newWine: Wine = {
     ...req.body,
     id: req.body.id ? Number(req.body.id) : nextId++,
     alcohol: Number(req.body.alcohol) || 0,
     price: Number(req.body.price) || 0,
+    cellarLocation: location,
   };
   if (newWine.id >= nextId) {
     nextId = newWine.id + 1;
@@ -140,12 +176,17 @@ app.put('/wine/update', (req, res) => {
   if (index === -1) {
     return res.status(404).json({ error: `Wine with ID ${updatedData.id} was not found` });
   }
+  const location = (updatedData.cellarLocation || wines[index].cellarLocation || '').trim() || 'Main Cellar - Rack A1';
+  if (!cellarLocations.includes(location)) {
+    cellarLocations.push(location);
+  }
   wines[index] = {
     ...wines[index],
     ...updatedData,
     id: Number(updatedData.id),
     alcohol: Number(updatedData.alcohol) || 0,
     price: Number(updatedData.price) || 0,
+    cellarLocation: location,
   };
   res.status(200).json(wines[index]);
 });
@@ -156,6 +197,24 @@ app.delete('/wine/delete/:id', (req, res) => {
   res.status(200).json({ message: `Wine ${id} deleted successfully` });
 });
 
+app.get('/wine/brand/:brand', (req, res) => {
+  const brandQuery = req.params.brand.toLowerCase();
+  const matched = wines.filter(w => w.brand.toLowerCase().includes(brandQuery));
+  res.status(200).json(matched);
+});
+
+app.get('/wine/varietal/:varietal', (req, res) => {
+  const varietalQuery = req.params.varietal.toLowerCase();
+  const matched = wines.filter(w => w.varietal.toLowerCase().includes(varietalQuery));
+  res.status(200).json(matched);
+});
+
+app.get('/wine/cellar/:location', (req, res) => {
+  const locQuery = req.params.location.toLowerCase();
+  const matched = wines.filter(w => (w.cellarLocation || '').toLowerCase().includes(locQuery));
+  res.status(200).json(matched);
+});
+
 const isProduction = process.env.NODE_ENV === 'production';
 const PORT = Number(process.env.PORT) || 3000;
 
@@ -163,7 +222,11 @@ async function startServer() {
   if (!isProduction) {
     const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
-      server: { middlewareMode: true },
+      server: {
+        middlewareMode: true,
+        allowedHosts: true,
+        hmr: process.env.DISABLE_HMR !== 'true',
+      },
       appType: 'spa',
     });
     app.use(vite.middlewares);

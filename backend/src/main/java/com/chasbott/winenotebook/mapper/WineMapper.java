@@ -30,7 +30,10 @@ public class WineMapper {
             request.tannin(),
             request.acidity(),
             request.price(),
-            request.priceRange()
+            request.priceRange(),
+            request.cellarLocation() != null && !request.cellarLocation().isBlank()
+                ? request.cellarLocation()
+                : "Main Cellar"
         );
     }
 
@@ -52,7 +55,10 @@ public class WineMapper {
             wine.getTannin(),
             wine.getAcidity(),
             wine.getPrice(),
-            wine.getPriceRange()
+            wine.getPriceRange(),
+            wine.getCellarLocation() != null && !wine.getCellarLocation().isBlank()
+                ? wine.getCellarLocation()
+                : "Main Cellar"
         );
     }
 
@@ -73,5 +79,8 @@ public class WineMapper {
         wine.setAcidity(request.acidity());
         wine.setPrice(request.price());
         wine.setPriceRange(request.priceRange());
+        if (request.cellarLocation() != null && !request.cellarLocation().isBlank()) {
+            wine.setCellarLocation(request.cellarLocation());
+        }
     }
 }

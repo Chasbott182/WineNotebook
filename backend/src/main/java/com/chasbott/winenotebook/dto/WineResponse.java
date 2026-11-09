@@ -20,5 +20,6 @@ public record WineResponse(
     String tannin,
     String acidity,
     double price,
-    String priceRange
+    String priceRange,
+    String cellarLocation
 ) {}
